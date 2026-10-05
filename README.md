@@ -1,15 +1,16 @@
 # Water Tank Level Monitoring with SMS Alerts
 
-Measures water-tank level with an ultrasonic sensor and sends **SMS alerts over GSM** when the tank runs low or becomes full.
+Measures water-tank level with an ultrasonic sensor and sends **SMS alerts over GSM** as the tank fills or drains.
 
 ## How it works
 - An **HC-SR04** ultrasonic sensor measures the distance to the water surface. The median of 5 readings filters out ripples.
 - The distance is converted to a **fill percentage** using the tank height.
-- A **SIM800L GSM module** sends an SMS when the level crosses the LOW or FULL threshold.
-- **Hysteresis** stops repeated alerts while the level hovers near a threshold.
+- A **SIM800L GSM module** sends `Water level at X%` each time the level crosses an alert step (**75, 50, 25, 10, 5 %**), in either direction.
+- If the level moves past several steps between readings, only the step it lands in is reported.
+- **Hysteresis** (2 %) stops repeated alerts while the level hovers at a step.
 
 ```
-HC-SR04 → Arduino (median filter → level %) → threshold + hysteresis → SIM800L → SMS
+HC-SR04 → Arduino (median filter → level %) → step crossing + hysteresis → SIM800L → SMS
 ```
 
 ## Hardware
@@ -45,23 +46,22 @@ HC-SR04 → Arduino (median filter → level %) → threshold + hysteresis → S
 
 **4. Configure and upload**
 - Open `firmware/water_tank_gsm/water_tank_gsm.ino` in the Arduino IDE. `SoftwareSerial` is built in, so no libraries are needed.
-- Set `PHONE_NUMBER` with the country code (e.g. `+91…`), the tank values from step 3, and `LOW_PERCENT` / `FULL_PERCENT`.
+- Set `PHONE_NUMBER` with the country code (e.g. `+91…`), and the tank values from step 3. Edit `ALERT_STEPS` to change which levels trigger an SMS.
 - Select **Arduino Uno** and upload.
 
 **5. Test**
 - Open the Serial Monitor at **9600** baud and check the level % as you change the water level, or move a board under the sensor.
-- Cross a threshold and an SMS should arrive within a few seconds.
+- Fill or drain past a step (e.g. 50 %) and an SMS should arrive within a few seconds.
 
 **Troubleshooting**
 - *No SMS, and the LED blinks once per second:* not registered. Check the antenna, the 2G coverage, and the SIM PIN.
 - *Module keeps restarting:* the supply can't deliver 2 A. Use a better source and add a 1000 µF capacitor across VCC/GND.
 - *Level jumps around:* the sensor isn't level, or it's seeing the tank wall or the inlet stream.
 
-## Example alerts
-```
-ALERT: Water tank LOW (18%). Please refill.
-ALERT: Water tank FULL (91%). Switch off the pump.
-```
+## Results
+Field test (23 Nov 2024): the alerts the phone received as the tank drained and was refilled.
+
+<img src="figures/sms_alerts.jpg" alt="SMS alerts received during testing" width="360">
 
 ## Contributing
 I'm open to open-source contributions and collaboration. Issues and pull requests are welcome.
