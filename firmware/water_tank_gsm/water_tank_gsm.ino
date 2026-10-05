@@ -3,7 +3,9 @@
  *
  * HC-SR04 ultrasonic sensor measures the distance to the water surface,
  * converts it to a fill percentage, and a SIM800L GSM module sends an SMS
- * when the tank goes LOW or FULL. Hysteresis prevents repeated alerts.
+ * ("Water level at X%") every time the level crosses one of the alert steps
+ * (75, 50, 25, 10, 5 %), whether it is filling or draining. Hysteresis
+ * prevents repeated alerts while the level hovers at a step.
  *
  * Board: Arduino Uno
  * Wiring:
@@ -19,9 +21,8 @@
 const char PHONE_NUMBER[] = "+91XXXXXXXXXX";  // alert recipient
 const float TANK_HEIGHT_CM  = 100.0;  // sensor face to tank bottom
 const float SENSOR_GAP_CM   = 5.0;    // sensor face to "full" water line
-const int   LOW_PERCENT     = 20;     // alert when level drops below this
-const int   FULL_PERCENT    = 90;     // alert when level rises above this
-const int   HYSTERESIS      = 5;      // % margin before re-arming an alert
+const int   ALERT_STEPS[]   = {5, 10, 25, 50, 75};  // % levels that trigger an SMS (ascending)
+const int   HYSTERESIS      = 2;      // % margin past a step before it counts as crossed
 const unsigned long READ_INTERVAL_MS = 2000;
 // ----------------------------------------------------
 
@@ -29,8 +30,8 @@ const int TRIG_PIN = 9;
 const int ECHO_PIN = 10;
 SoftwareSerial gsm(7, 8);  // RX, TX
 
-enum TankState { NORMAL, LOW_LEVEL, FULL_LEVEL };
-TankState state = NORMAL;
+const int NUM_STEPS = sizeof(ALERT_STEPS) / sizeof(ALERT_STEPS[0]);
+int currentStep = -1;          // last reported step (0 = below the lowest step), -1 = not yet reported
 unsigned long lastRead = 0;
 
 // ---------------- Ultrasonic ----------------
@@ -68,6 +69,14 @@ int levelPercent(float distanceCm) {
   float usable = TANK_HEIGHT_CM - SENSOR_GAP_CM;
   int pct = (int)(waterHeight / usable * 100.0);
   return constrain(pct, 0, 100);
+}
+
+// Highest alert step at or below the given level (0 if below every step)
+int stepFor(int pct) {
+  int step = 0;
+  for (int i = 0; i < NUM_STEPS; i++)
+    if (pct >= ALERT_STEPS[i]) step = ALERT_STEPS[i];
+  return step;
 }
 
 // ---------------- GSM ----------------
@@ -142,7 +151,6 @@ void setup() {
   pinMode(ECHO_PIN, INPUT);
   delay(3000);                            // let the GSM module boot
   initGSM();
-  sendSMS("Water tank monitor online.");
 }
 
 void loop() {
@@ -158,19 +166,18 @@ void loop() {
   Serial.print(F("Distance: ")); Serial.print(d, 1);
   Serial.print(F(" cm  Level: ")); Serial.print(pct); Serial.println(F(" %"));
 
-  switch (state) {
-    case NORMAL:
-      if (pct <= LOW_PERCENT) {
-        if (sendSMS("ALERT: Water tank LOW (" + String(pct) + "%). Please refill.")) state = LOW_LEVEL;
-      } else if (pct >= FULL_PERCENT) {
-        if (sendSMS("ALERT: Water tank FULL (" + String(pct) + "%). Switch off the pump.")) state = FULL_LEVEL;
-      }
-      break;
-    case LOW_LEVEL:
-      if (pct > LOW_PERCENT + HYSTERESIS) state = NORMAL;
-      break;
-    case FULL_LEVEL:
-      if (pct < FULL_PERCENT - HYSTERESIS) state = NORMAL;
-      break;
+  int step = stepFor(pct);
+  if (step == currentStep) return;
+
+  // Only accept a new step once the level is clearly past it
+  if (currentStep >= 0) {
+    if (step > currentStep && stepFor(pct - HYSTERESIS) != step) return;  // filling
+    if (step < currentStep && stepFor(pct + HYSTERESIS) != step) return;  // draining
   }
+
+  if (step == 0) {               // below the lowest step: no message, just track it
+    currentStep = 0;
+    return;
+  }
+  if (sendSMS("Water level at " + String(step) + "%")) currentStep = step;
 }
