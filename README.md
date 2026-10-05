@@ -5,7 +5,7 @@ Measures water-tank level with an ultrasonic sensor and sends **SMS alerts over 
 ## How it works
 - An **HC-SR04** ultrasonic sensor measures the distance to the water surface. The median of 5 readings filters out ripples.
 - The distance is converted to a **fill percentage** using the tank height.
-- A **SIM800L GSM module** sends `Water level at X%` each time the level crosses an alert step (**75, 50, 25, 10, 5 %**), in either direction.
+- A **SIM800L GSM module** sends `Water level at X%` each time the level crosses a multiple of **5 %** (5, 10, 15 … 100), in either direction.
 - If the level moves past several steps between readings, only the step it lands in is reported.
 - **Hysteresis** (2 %) stops repeated alerts while the level hovers at a step.
 
@@ -46,7 +46,7 @@ HC-SR04 → Arduino (median filter → level %) → step crossing + hysteresis �
 
 **4. Configure and upload**
 - Open `firmware/water_tank_gsm/water_tank_gsm.ino` in the Arduino IDE. `SoftwareSerial` is built in, so no libraries are needed.
-- Set `PHONE_NUMBER` with the country code (e.g. `+91…`), and the tank values from step 3. Edit `ALERT_STEPS` to change which levels trigger an SMS.
+- Set `PHONE_NUMBER` with the country code (e.g. `+91…`), and the tank values from step 3. Change `STEP_PERCENT` to alert less often (e.g. `10` or `25`). Every SMS costs credit, and at 5 % a full fill sends 20 messages.
 - Select **Arduino Uno** and upload.
 
 **5. Test**
