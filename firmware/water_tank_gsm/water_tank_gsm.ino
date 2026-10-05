@@ -3,8 +3,8 @@
  *
  * HC-SR04 ultrasonic sensor measures the distance to the water surface,
  * converts it to a fill percentage, and a SIM800L GSM module sends an SMS
- * ("Water level at X%") every time the level crosses one of the alert steps
- * (75, 50, 25, 10, 5 %), whether it is filling or draining. Hysteresis
+ * ("Water level at X%") every time the level crosses a multiple of 5 %
+ * (5, 10, 15 ... 100), whether it is filling or draining. Hysteresis
  * prevents repeated alerts while the level hovers at a step.
  *
  * Board: Arduino Uno
@@ -21,7 +21,7 @@
 const char PHONE_NUMBER[] = "+91XXXXXXXXXX";  // alert recipient
 const float TANK_HEIGHT_CM  = 100.0;  // sensor face to tank bottom
 const float SENSOR_GAP_CM   = 5.0;    // sensor face to "full" water line
-const int   ALERT_STEPS[]   = {5, 10, 25, 50, 75};  // % levels that trigger an SMS (ascending)
+const int   STEP_PERCENT    = 5;      // SMS at every multiple of this (5, 10, 15 ... 100)
 const int   HYSTERESIS      = 2;      // % margin past a step before it counts as crossed
 const unsigned long READ_INTERVAL_MS = 2000;
 // ----------------------------------------------------
@@ -30,7 +30,6 @@ const int TRIG_PIN = 9;
 const int ECHO_PIN = 10;
 SoftwareSerial gsm(7, 8);  // RX, TX
 
-const int NUM_STEPS = sizeof(ALERT_STEPS) / sizeof(ALERT_STEPS[0]);
 int currentStep = -1;          // last reported step (0 = below the lowest step), -1 = not yet reported
 unsigned long lastRead = 0;
 
@@ -71,12 +70,10 @@ int levelPercent(float distanceCm) {
   return constrain(pct, 0, 100);
 }
 
-// Highest alert step at or below the given level (0 if below every step)
+// Highest step at or below the given level (0 if below the first step)
 int stepFor(int pct) {
-  int step = 0;
-  for (int i = 0; i < NUM_STEPS; i++)
-    if (pct >= ALERT_STEPS[i]) step = ALERT_STEPS[i];
-  return step;
+  if (pct < 0) pct = 0;
+  return (pct / STEP_PERCENT) * STEP_PERCENT;
 }
 
 // ---------------- GSM ----------------
@@ -171,11 +168,11 @@ void loop() {
 
   // Only accept a new step once the level is clearly past it
   if (currentStep >= 0) {
-    if (step > currentStep && stepFor(pct - HYSTERESIS) != step) return;  // filling
+    if (step > currentStep && pct < 100 && stepFor(pct - HYSTERESIS) != step) return;  // filling
     if (step < currentStep && stepFor(pct + HYSTERESIS) != step) return;  // draining
   }
 
-  if (step == 0) {               // below the lowest step: no message, just track it
+  if (step == 0) {               // below the first step: no message, just track it
     currentStep = 0;
     return;
   }
